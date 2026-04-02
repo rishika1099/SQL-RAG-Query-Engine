@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+chroma_store/
+apollo.db
+eval_report.json
+eval_report.md
+.DS_Store

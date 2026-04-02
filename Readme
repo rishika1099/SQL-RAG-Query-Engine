@@ -1,0 +1,224 @@
+# Apollo AI Coach — RAG Internship Assessment
+
+A full-stack natural language → SQL → visualization pipeline for elite sports performance analytics. Built for the Apollo MIS RAG Internship assessment.
+
+## Demo
+
+Ask questions like:
+- *"Who had the highest workload last week?"*
+- *"Show average sprint distance by position"*
+- *"Which athletes have a fatigue score above 40?"*
+- *"Compare match vs training distance for forwards"*
+
+The system retrieves relevant KPI definitions via semantic search, generates SQL with Claude, validates and executes it against a real database, and returns a chart + table + follow-up suggestions.
+
+---
+
+## Architecture
+
+```
+Voice/Text Input
+      ↓
+Intent Classifier (Claude Haiku — fast)
+      ↓
+KPI Semantic Retrieval (ChromaDB + all-MiniLM-L6-v2)
+      ↓
+SQL Generation (Claude Sonnet + schema + KPI context)
+      ↓
+SQL Validator (AST safety checks)
+      ↓
+SQLite Execution
+      ↓
+Parallel: Verify + Chart + Follow-ups (Claude Haiku)
+      ↓
+React Frontend (Recharts + dark UI)
+```
+
+### Where LLMs are used
+| Step | Model | Purpose |
+|------|-------|---------|
+| Intent classification | Claude Haiku | Is this a clear query or does it need clarification? |
+| SQL generation | Claude Sonnet | NL → SQLite query with schema + KPI context |
+| Result verification | Claude Haiku | Does the result actually answer the question? |
+| Chart suggestion | Claude Haiku | Best chart type for this data |
+| Follow-up generation | Claude Haiku | 3 natural next questions a coach would ask |
+
+### Where RAG is used
+KPI definitions (10 metrics) are embedded using `all-MiniLM-L6-v2` and stored in ChromaDB. At query time, the user's question is embedded and the top-3 most semantically similar KPI definitions are retrieved and injected into the SQL generation prompt. This grounds the SQL in Apollo's actual metric definitions rather than letting the LLM guess.
+
+---
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18 + Vite + Recharts |
+| Backend | FastAPI (async) + Python 3.11 |
+| Database | SQLite (via SQLAlchemy) |
+| Vector store | ChromaDB + sentence-transformers |
+| LLM | Anthropic Claude (Sonnet + Haiku) |
+| Validation | sqlparse AST safety checks |
+
+---
+
+## Setup
+
+### Prerequisites
+- Python 3.11 (via pyenv recommended)
+- Node.js 18+
+- Anthropic API key
+
+### 1. Clone and set up backend
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Configure environment
+
+Copy `.env` and add your API key:
+```
+ANTHROPIC_API_KEY=sk-ant-...
+CSV_DIR=./data
+CHROMA_PATH=./chroma_store
+```
+
+### 3. Start backend
+
+```bash
+uvicorn main:app --reload --port 8000
+```
+
+On first start, the server will:
+- Seed the 4 CSV files into SQLite
+- Load the embedding model and seed 10 KPI definitions into ChromaDB
+- Run a warmup query to initialize the vector index
+
+### 4. Start frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**
+
+---
+
+## Evaluation
+
+Run the benchmark suite (requires backend running):
+
+```bash
+cd backend
+python eval.py
+```
+
+Runs 15 benchmark tests covering aggregation, filtering, comparison, ranking, wellness, and derived metrics.
+
+### Latest eval results
+
+| Metric | Score |
+|--------|-------|
+| Pass rate | 12–14/15 (80–93%) |
+| Avg latency | ~30s |
+| KPI retrieval P@3 | 75–100% |
+| Verification correct | ~60% |
+
+---
+
+## Features
+
+- **Natural language queries** — plain English to SQL via Claude
+- **KPI semantic retrieval** — RAG over 10 metric definitions using ChromaDB
+- **SQL safety validation** — blocks writes, system table access, enforces LIMIT
+- **Self-verification** — Claude checks whether its own result answers the question
+- **Parallel LLM calls** — verify + chart + followups run concurrently (3× faster)
+- **Voice input** — Web Speech API with real-time audio level visualization
+- **Follow-up suggestions** — Claude generates 3 natural next questions
+- **Feedback logging** — thumbs up/down stored in SQLite for eval loop
+- **CSV export** — download any result set
+- **Dark split-screen UI** — query panel left, results right
+
+---
+
+## Project Structure
+
+```
+apollo-react/
+├── backend/
+│   ├── main.py          # FastAPI app — async /query endpoint
+│   ├── db.py            # SQLite connection + CSV seeding
+│   ├── llm.py           # Claude NL→SQL + chart + followup + intent
+│   ├── embeddings.py    # ChromaDB KPI vector store + retrieval
+│   ├── validator.py     # SQL AST safety validation
+│   ├── verifier.py      # Claude self-verification layer
+│   ├── eval.py          # 15-question benchmark suite
+│   ├── requirements.txt
+│   ├── .env
+│   └── data/            # CSV files
+│       ├── athletes.csv
+│       ├── sessions.csv
+│       ├── gps_metrics.csv
+│       └── wellness.csv
+└── frontend/
+    ├── src/
+    │   ├── App.jsx
+    │   └── components/
+    │       ├── QueryPanel.jsx   # Left panel: input, chips, history, voice
+    │       ├── ResultPanel.jsx  # Right panel: SQL, KPI badges, verify, feedback
+    │       ├── ChartView.jsx    # Recharts bar/line/scatter
+    │       └── DataTable.jsx    # Sortable results table + CSV export
+    ├── public/favicon.svg
+    ├── index.html
+    ├── package.json
+    └── vite.config.js
+```
+
+---
+
+## API
+
+### `POST /query`
+```json
+{ "question": "Who had the highest sprint distance?" }
+```
+Returns:
+```json
+{
+  "question": "...",
+  "sql": "SELECT ...",
+  "columns": ["name", "total_sprint_distance"],
+  "rows": [["James Smith", 1500], ...],
+  "row_count": 6,
+  "kpis_retrieved": [{"kpi_id": "avg_sprint_distance", "similarity": 0.91}],
+  "chart": {"chart_type": "bar", "x_key": "name", "y_key": "total_sprint_distance"},
+  "verification": {"verdict": "correct", "confidence": 0.95},
+  "followups": ["Which position had the most sprint distance?", ...]
+}
+```
+
+### `POST /feedback`
+```json
+{ "question": "...", "sql": "...", "verdict": "correct", "rating": 1 }
+```
+
+### `GET /feedback/stats`
+Returns thumbs up/down counts for monitoring.
+
+---
+
+## Assessment Coverage
+
+| Task | Implementation |
+|------|---------------|
+| Task 1 — Voice pipeline design | `llm.py` intent → RAG → SQL → verify → chart pipeline |
+| Task 2 — SQL generation + prompt | `llm.py` SQL_SYSTEM prompt with 12 proven examples |
+| Task 3 — KPI retrieval | `embeddings.py` ChromaDB + cosine similarity |
+| Task 4 — Visualizations | `ChartView.jsx` Recharts bar/line/scatter |
+| Task 5 — Reliable NL querying | Schema abstraction, KPI store, validation layers |
+| Task 6 — Evaluation framework | `eval.py` 15-question benchmark with 8 metrics |

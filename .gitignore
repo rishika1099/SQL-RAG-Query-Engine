@@ -1,0 +1,25 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/apollo.db
+backend/chroma_store/
+backend/eval_report.json
+backend/eval_report.md
+
+# Environment
+backend/.env
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Mac
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
