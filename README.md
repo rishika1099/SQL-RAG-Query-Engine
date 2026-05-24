@@ -1,4 +1,4 @@
-# Apollo AI Coach — RAG Internship Assessment
+# AI Coach
 
 A full-stack natural language to SQL to visualization pipeline for elite sports performance analytics. Built for the Apollo MIS RAG Internship assessment.
 
